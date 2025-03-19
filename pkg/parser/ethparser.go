@@ -17,22 +17,24 @@ import (
 )
 
 const (
-	RpcUrl                      = "https://ethereum-rpc.publicnode.com"
-	GetCurrentBlock             = "eth_blockNumber"
-	GetCurrentBlockByNumber     = "eth_getBlockByNumber"
-	CurrentBlockParam           = "latest"
-	CurrentBlockPollingInterval = 5 * time.Second
+	RpcUrl                  = "https://ethereum-rpc.publicnode.com"
+	GetCurrentBlock         = "eth_blockNumber"
+	GetCurrentBlockByNumber = "eth_getBlockByNumber"
+	CurrentBlockParam       = "latest"
 )
 
+// EthTxParser is a parser for Ethereum transactions.
 type EthTxParser struct {
-	TxStore   store.TxStore[EthTransaction]
-	Addresses map[string]bool
-	LastBlock int64
-	Client    http.Client
-	mx        sync.RWMutex
-	logger    slog.Logger
+	txStore              store.TxStore[EthTransaction]
+	addresses            map[string]bool
+	lastBlock            int64
+	blockPollingInterval time.Duration
+	client               http.Client
+	mx                   sync.RWMutex
+	logger               slog.Logger
 }
 
+// CurrentBlockRequest represents a request to get the current block number.
 type CurrentBlockRequest struct {
 	Jsonrpc string        `json:"jsonrpc"`
 	Method  string        `json:"method"`
@@ -40,6 +42,7 @@ type CurrentBlockRequest struct {
 	Id      int           `json:"id"`
 }
 
+// BlockByNumberRequest represents a request to get a block by number.
 type BlockByNumberRequest struct {
 	Jsonrpc string        `json:"jsonrpc"`
 	Method  string        `json:"method"`
@@ -47,12 +50,14 @@ type BlockByNumberRequest struct {
 	Id      int           `json:"id"`
 }
 
+// EthBlockNumberResponse represents the response from an Ethereum block number request.
 type EthBlockNumberResponse struct {
 	Id      int    `json:"id"`
 	Jsonrpc string `json:"jsonrpc"`
 	Result  string `json:"result"`
 }
 
+// EthBlockByNumberResponse represents the response from an Ethereum block request.
 type EthBlockByNumberResponse struct {
 	Id      int    `json:"id"`
 	Jsonrpc string `json:"jsonrpc"`
@@ -61,6 +66,7 @@ type EthBlockByNumberResponse struct {
 	} `json:"result"`
 }
 
+// EthTransaction represents an Ethereum transaction.
 type EthTransaction struct {
 	Address     string `json:"address"`
 	Hash        string `json:"hash"`
@@ -75,14 +81,18 @@ type EthTransaction struct {
 	GasPrice    string `json:"gasPrice"`
 }
 
-func NewEthTxParser(store store.TxStore[EthTransaction], log *slog.Logger) *EthTxParser {
+// NewEthTxParser creates a new EthTxParser
+func NewEthTxParser(store store.TxStore[EthTransaction], log *slog.Logger, pollingInterval int) *EthTxParser {
 	return &EthTxParser{
-		Addresses: make(map[string]bool),
-		Client:    http.Client{},
-		TxStore:   store,
+		addresses:            make(map[string]bool),
+		client:               http.Client{},
+		txStore:              store,
+		logger:               *log,
+		blockPollingInterval: time.Duration(pollingInterval) * time.Second,
 	}
 }
 
+// GetCurrentBlock returns the current block number in the blockchain.
 func (ep *EthTxParser) GetCurrentBlock() (int64, error) {
 	req := CurrentBlockRequest{
 		Jsonrpc: "2.0",
@@ -94,7 +104,7 @@ func (ep *EthTxParser) GetCurrentBlock() (int64, error) {
 	if err != nil {
 		return 0, err
 	}
-	resp, err := ep.Client.Post(RpcUrl, "application/json", bytes.NewBuffer(reqBody))
+	resp, err := ep.client.Post(RpcUrl, "application/json", bytes.NewBuffer(reqBody))
 	if err != nil {
 		return 0, err
 	}
@@ -118,9 +128,9 @@ func (ep *EthTxParser) GetCurrentBlock() (int64, error) {
 	return blockNumber, nil
 }
 
+// Start starts the EthTxParser, polling the blockchain for new blocks and updating transactions.
 func (ep *EthTxParser) Start(ctx context.Context) {
-	//go ep.pollCurrentBlock()
-	ticker := time.NewTicker(CurrentBlockPollingInterval)
+	ticker := time.NewTicker(ep.blockPollingInterval)
 	defer ticker.Stop()
 
 	for {
@@ -128,14 +138,16 @@ func (ep *EthTxParser) Start(ctx context.Context) {
 		case <-ticker.C:
 			latestBlock, err := ep.GetCurrentBlock()
 			if err != nil {
-				fmt.Printf("Error getting latest block: %s", err)
+				ep.logger.Error("Error getting latest block", slog.String("error", err.Error()))
 				continue
 			}
-			if latestBlock > ep.LastBlock {
-				for i := latestBlock; i > ep.LastBlock; i-- {
-					ep.UpdateTransactionsFromBlock(i)
+			if latestBlock > ep.lastBlock {
+				for i := latestBlock; i > ep.lastBlock; i-- {
+					if err = ep.UpdateTransactionsFromBlock(i); err != nil {
+						ep.logger.Error("Error Updating Transactions from block", slog.Int64("block id", i), slog.String("error", err.Error()))
+					}
 				}
-				ep.LastBlock = latestBlock
+				ep.lastBlock = latestBlock
 			}
 		case <-ctx.Done():
 			return
@@ -143,7 +155,8 @@ func (ep *EthTxParser) Start(ctx context.Context) {
 	}
 }
 
-func (ep *EthTxParser) UpdateTransactionsFromBlock(blockNum int64) error {
+// QueryTransactionsFromBlock queries the blockchain for transactions in a given block.
+func (ep *EthTxParser) QueryTransactionsFromBlock(blockNum int64) ([]EthTransaction, error) {
 	req := BlockByNumberRequest{
 		Jsonrpc: "2.0",
 		Method:  GetCurrentBlockByNumber,
@@ -152,51 +165,68 @@ func (ep *EthTxParser) UpdateTransactionsFromBlock(blockNum int64) error {
 	}
 	reqBody, err := json.Marshal(req)
 	if err != nil {
-		return err
+		return nil, err
 	}
-	resp, err := ep.Client.Post(RpcUrl, "application/json", bytes.NewBuffer(reqBody))
+	resp, err := ep.client.Post(RpcUrl, "application/json", bytes.NewBuffer(reqBody))
 	if err != nil {
-		return err
+		return nil, err
 	}
 	defer resp.Body.Close()
 
 	body, err := io.ReadAll(resp.Body)
 	if err != nil {
-		return err
+		return nil, err
 	}
-	//fmt.Println("BODY:", string(body))
 	var ethResp EthBlockByNumberResponse
 	err = json.Unmarshal(body, &ethResp)
 	if err != nil {
-		return err
+		return nil, err
 	}
 
-	transactions := ethResp.Result.Transactions
+	return ethResp.Result.Transactions, nil
+}
+
+// UpdateTransactionsFromBlock updates the transaction store with transactions from the given block.
+func (ep *EthTxParser) UpdateTransactionsFromBlock(blockNum int64) error {
 	ep.mx.RLock()
 	defer ep.mx.RUnlock()
+	transactions, err := ep.QueryTransactionsFromBlock(blockNum)
+	if err != nil {
+		return err
+	}
 	for _, tx := range transactions {
 		//fmt.Printf("Transaction: %+v\n", tx)
 		var address string
-		if ep.Addresses[tx.From] {
+		if ep.addresses[tx.From] {
 			address = tx.From
-		} else if ep.Addresses[tx.To] {
+		} else if ep.addresses[tx.To] {
 			address = tx.To
 		} else {
 			continue
 		}
-		ep.TxStore.AddTransaction(address, tx)
+		ep.txStore.AddTransaction(address, tx)
 	}
-
 	return nil
 }
 
+// Subscribe adds an address to the list of addresses to track.
 func (ep *EthTxParser) Subscribe(address string) bool {
 	ep.mx.Lock()
 	defer ep.mx.Unlock()
-	ep.Addresses[address] = true
+	ep.addresses[address] = true
 	return true
 }
 
+// GetTransactions returns a list of transactions for an address from the Transaction store.
+func (ep *EthTxParser) GetTransactions(address string) ([]EthTransaction, error) {
+	txs, err := ep.txStore.GetTransactions(address)
+	if err != nil {
+		return nil, err
+	}
+	return txs, nil
+}
+
+// ParseHex parses a hex string into an int64.
 func ParseHex(hex string) (int64, error) {
 	h := strings.TrimPrefix(hex, "0x")
 	val, err := strconv.ParseInt(h, 16, 64)

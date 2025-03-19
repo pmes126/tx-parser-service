@@ -8,10 +8,6 @@ type TxStore[T any] interface {
 	AddTransaction(address string, tx T) error
 	// GetTransactions returns a list of transactions for an address
 	GetTransactions(address string) ([]T, error)
-	// LockStore locks the store for writing/reading
-	LockStore()
-	// UnlockStore unlocks the store
-	UnlockStore()
 }
 
 var (

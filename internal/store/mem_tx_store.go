@@ -1,7 +1,6 @@
 package store
 
 import (
-	"fmt"
 	"sync"
 )
 
@@ -34,18 +33,12 @@ func (mts *MemTxStore[T]) AddTransaction(address string, tx T) error {
 
 // GetTransactions returns a list of transactions for an address
 func (mts *MemTxStore[T]) GetTransactions(address string) ([]T, error) {
-	if txs, ok := mts.Transactions[address]; ok {
-		return txs, nil
-	}
-	return nil, fmt.Errorf("no transactions found for address %s", address)
-}
-
-// LockStore locks the store for writing/reading
-func (mts *MemTxStore[T]) LockStore() {
 	mts.mx.Lock()
-}
-
-// UnlockStore unlocks the store
-func (mts *MemTxStore[T]) UnlockStore() {
-	mts.mx.Unlock()
+	defer mts.mx.Unlock()
+	if txs, ok := mts.Transactions[address]; ok {
+		res := make([]T, len(txs))
+		copy(res, txs)
+		return res, nil
+	}
+	return nil, ErrNoTransactions
 }
