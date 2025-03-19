@@ -3,6 +3,7 @@ package main
 import (
 	"context"
 	"fmt"
+	"github.com/pmes126/tx-parser-service/parser"
 	"os"
 	"os/signal"
 	"syscall"
@@ -15,10 +16,10 @@ func run() {
 	signal.Notify(shutdown, syscall.SIGINT, syscall.SIGTERM, os.Interrupt)
 	defer signal.Stop(shutdown)
 
-	//txParser := NewEthTxParser()
+	txParser := parser.NewEthTxParser()
 	//txParser.Start()
-	//block, _ := txParser.GetCurrentBlock()
-	//txParser.UpdateTransactionsFromBlock(block)
+	block, _ := txParser.GetCurrentBlock()
+	txParser.UpdateTransactionsFromBlock(block)
 	//defer txParser.Stop()
 
 	go func() {
