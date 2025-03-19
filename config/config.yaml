@@ -1,0 +1,9 @@
+# config/config.yaml
+
+http_port : 8080
+readTimeout : 2
+writeTimeout : 10
+idleTimeout : 15
+httpTimeout : 2
+pollInterval : 12
+workerCount :  10
