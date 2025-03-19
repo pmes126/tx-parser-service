@@ -50,10 +50,13 @@ func run(c context.Context, logger *slog.Logger, cfg *Config) error {
 	signal.Notify(shutdown, syscall.SIGINT, syscall.SIGTERM, os.Interrupt)
 	defer signal.Stop(shutdown)
 
-	ethTxParser := parser.NewEthTxParser(store.NewMemTxStore[parser.EthTransaction](), logger, cfg.PollInterval)
+	ethTxParser := parser.NewEthTxParser(store.NewMemTxStore[parser.EthTransaction](), &http.Client{}, logger, cfg.PollInterval)
 	block, _ := ethTxParser.GetCurrentBlock()
 	fmt.Println("Current block:", block)
-	ethTxParser.UpdateTransactionsFromBlock(block)
+	fmt.Println(fmt.Sprintf("0x%x", 22113))
+	t, _ := ethTxParser.QueryTransactionsFromBlock(10000000)
+
+	fmt.Println("Transactions:", len(t))
 
 	go func() {
 		logger.Info("Starting tx-parser-service")

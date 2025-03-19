@@ -29,9 +29,9 @@ type EthTxParser struct {
 	addresses            map[string]bool
 	lastBlock            int64
 	blockPollingInterval time.Duration
-	client               http.Client
+	client               *http.Client
 	mx                   sync.RWMutex
-	logger               slog.Logger
+	logger               *slog.Logger
 }
 
 // CurrentBlockRequest represents a request to get the current block number.
@@ -82,12 +82,12 @@ type EthTransaction struct {
 }
 
 // NewEthTxParser creates a new EthTxParser
-func NewEthTxParser(store store.TxStore[EthTransaction], log *slog.Logger, pollingInterval int) *EthTxParser {
+func NewEthTxParser(store store.TxStore[EthTransaction], client *http.Client, log *slog.Logger, pollingInterval int) *EthTxParser {
 	return &EthTxParser{
 		addresses:            make(map[string]bool),
-		client:               http.Client{},
+		client:               client,
 		txStore:              store,
-		logger:               *log,
+		logger:               log,
 		blockPollingInterval: time.Duration(pollingInterval) * time.Second,
 	}
 }
@@ -143,7 +143,11 @@ func (ep *EthTxParser) Start(ctx context.Context) {
 			}
 			if latestBlock > ep.lastBlock {
 				for i := latestBlock; i > ep.lastBlock; i-- {
-					if err = ep.UpdateTransactionsFromBlock(i); err != nil {
+					transactions, err := ep.QueryTransactionsFromBlock(i)
+					if err != nil {
+						ep.logger.Error("Error Querying Transactions for block", slog.Int64("block id", i), slog.String("error", err.Error()))
+					}
+					if err = ep.UpdateTransactionsInStore(transactions); err != nil {
 						ep.logger.Error("Error Updating Transactions from block", slog.Int64("block id", i), slog.String("error", err.Error()))
 					}
 				}
@@ -186,25 +190,17 @@ func (ep *EthTxParser) QueryTransactionsFromBlock(blockNum int64) ([]EthTransact
 	return ethResp.Result.Transactions, nil
 }
 
-// UpdateTransactionsFromBlock updates the transaction store with transactions from the given block.
-func (ep *EthTxParser) UpdateTransactionsFromBlock(blockNum int64) error {
+// UpdateTransactionsInStore updates the transaction store with transactions from the given block.
+func (ep *EthTxParser) UpdateTransactionsInStore(transactions []EthTransaction) error {
 	ep.mx.RLock()
 	defer ep.mx.RUnlock()
-	transactions, err := ep.QueryTransactionsFromBlock(blockNum)
-	if err != nil {
-		return err
-	}
 	for _, tx := range transactions {
-		//fmt.Printf("Transaction: %+v\n", tx)
-		var address string
 		if ep.addresses[tx.From] {
-			address = tx.From
-		} else if ep.addresses[tx.To] {
-			address = tx.To
-		} else {
-			continue
+			ep.txStore.AddTransaction(tx.From, tx)
 		}
-		ep.txStore.AddTransaction(address, tx)
+		if ep.addresses[tx.To] {
+			ep.txStore.AddTransaction(tx.To, tx)
+		}
 	}
 	return nil
 }
