@@ -8,11 +8,13 @@ import (
 	"io"
 	"log/slog"
 	"net/http"
+	//"runtime"
 	"strconv"
 	"strings"
 	"sync"
 	"time"
 
+	//"github.com/pmes126/tx-parser-service/internal/conc"
 	"github.com/pmes126/tx-parser-service/internal/store"
 )
 
@@ -88,6 +90,7 @@ func NewEthTxParser(store store.TxStore[EthTransaction], client *http.Client, lo
 		client:               client,
 		txStore:              store,
 		logger:               log,
+		lastBlock:            0,
 		blockPollingInterval: time.Duration(pollingInterval) * time.Second,
 	}
 }
@@ -133,6 +136,21 @@ func (ep *EthTxParser) Start(ctx context.Context) {
 	ticker := time.NewTicker(ep.blockPollingInterval)
 	defer ticker.Stop()
 
+	//job := func(ctx context.Context, blockNum int64) error {
+	//	transactions, err := ep.QueryTransactionsFromBlock(blockNum)
+	//	if err != nil {
+	//		ep.logger.Error("Error Querying Transactions for block", slog.Int64("block id", blockNum), slog.String("error", err.Error()))
+	//	}
+	//	if err = ep.UpdateTransactionsInStore(transactions); err != nil {
+	//		ep.logger.Error("Error Updating Transactions from block", slog.Int64("block id", blockNum), slog.String("error", err.Error()))
+	//	}
+	//	return nil
+	//}
+
+	//wp := conc.NewWorkerPool(runtime.NumCPU(), job, 10)
+	//defer wp.CloseInputChannel()
+	//resChan := wp.Start(ctx)
+
 	for {
 		select {
 		case <-ticker.C:
@@ -142,6 +160,10 @@ func (ep *EthTxParser) Start(ctx context.Context) {
 				continue
 			}
 			if latestBlock > ep.lastBlock {
+				// process the latest block on startup.
+				if ep.lastBlock == 0 {
+					ep.lastBlock = latestBlock - 1
+				}
 				for i := latestBlock; i > ep.lastBlock; i-- {
 					transactions, err := ep.QueryTransactionsFromBlock(i)
 					if err != nil {
@@ -192,14 +214,17 @@ func (ep *EthTxParser) QueryTransactionsFromBlock(blockNum int64) ([]EthTransact
 
 // UpdateTransactionsInStore updates the transaction store with transactions from the given block.
 func (ep *EthTxParser) UpdateTransactionsInStore(transactions []EthTransaction) error {
+	ep.logger.Info("Updating transactions in store")
 	ep.mx.RLock()
 	defer ep.mx.RUnlock()
 	for _, tx := range transactions {
-		if ep.addresses[tx.From] {
-			ep.txStore.AddTransaction(tx.From, tx)
+		from := strings.ToLower(tx.From)
+		to := strings.ToLower(tx.To)
+		if ep.addresses[from] {
+			ep.txStore.AddTransaction(from, tx)
 		}
-		if ep.addresses[tx.To] {
-			ep.txStore.AddTransaction(tx.To, tx)
+		if ep.addresses[to] {
+			ep.txStore.AddTransaction(from, tx)
 		}
 	}
 	return nil
@@ -207,15 +232,19 @@ func (ep *EthTxParser) UpdateTransactionsInStore(transactions []EthTransaction) 
 
 // Subscribe adds an address to the list of addresses to track.
 func (ep *EthTxParser) Subscribe(address string) bool {
+	addr := strings.ToLower(address)
+	ep.logger.Debug("Subscribing address", slog.String("address", addr))
 	ep.mx.Lock()
 	defer ep.mx.Unlock()
-	ep.addresses[address] = true
+	ep.addresses[addr] = true
 	return true
 }
 
 // GetTransactions returns a list of transactions for an address from the Transaction store.
 func (ep *EthTxParser) GetTransactions(address string) ([]EthTransaction, error) {
-	txs, err := ep.txStore.GetTransactions(address)
+	addr := strings.ToLower(address)
+	ep.logger.Debug("Getting transactions for address", slog.String("address", addr))
+	txs, err := ep.txStore.GetTransactions(addr)
 	if err != nil {
 		return nil, err
 	}

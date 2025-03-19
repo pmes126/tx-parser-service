@@ -59,8 +59,12 @@ func (h *Handler) handleGetTransactions(w http.ResponseWriter, r *http.Request) 
 	}
 	txs, err := h.txParser.GetTransactions(address)
 	if err != nil {
-		if errors.Is(err, store.ErrAddressNotFound) {
+		if errors.Is(err, store.ErrNoTransactions) {
 			http.Error(w, "No transactions found for address", http.StatusNotFound)
+			return
+		} else if errors.Is(err, store.ErrAddressNotFound) {
+			http.Error(w, "Address not Tracked", http.StatusBadRequest)
+			return
 		} else {
 			http.Error(w, err.Error(), http.StatusInternalServerError)
 			return
