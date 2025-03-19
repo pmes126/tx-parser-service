@@ -6,10 +6,14 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"log/slog"
 	"net/http"
 	"strconv"
 	"strings"
+	"sync"
 	"time"
+
+	"github.com/pmes126/tx-parser-service/internal/store"
 )
 
 const (
@@ -21,10 +25,12 @@ const (
 )
 
 type EthTxParser struct {
-	//Store Storage
+	TxStore   store.TxStore[EthTransaction]
 	Addresses map[string]bool
-	LastBlock uint64
+	LastBlock int64
 	Client    http.Client
+	mx        sync.RWMutex
+	logger    slog.Logger
 }
 
 type CurrentBlockRequest struct {
@@ -56,6 +62,7 @@ type EthBlockByNumberResponse struct {
 }
 
 type EthTransaction struct {
+	Address     string `json:"address"`
 	Hash        string `json:"hash"`
 	Nonce       string `json:"nonce"`
 	BlockHash   string `json:"blockHash"`
@@ -68,14 +75,15 @@ type EthTransaction struct {
 	GasPrice    string `json:"gasPrice"`
 }
 
-func NewEthTxParser() *EthTxParser {
+func NewEthTxParser(store store.TxStore[EthTransaction], log *slog.Logger) *EthTxParser {
 	return &EthTxParser{
 		Addresses: make(map[string]bool),
 		Client:    http.Client{},
+		TxStore:   store,
 	}
 }
 
-func (ep *EthTxParser) GetCurrentBlock() (uint64, error) {
+func (ep *EthTxParser) GetCurrentBlock() (int64, error) {
 	req := CurrentBlockRequest{
 		Jsonrpc: "2.0",
 		Method:  GetCurrentBlock,
@@ -102,7 +110,7 @@ func (ep *EthTxParser) GetCurrentBlock() (uint64, error) {
 		return 0, err
 	}
 
-	blockNumber, err := strconv.ParseUint(ethResp.Result, 0, 64)
+	blockNumber, err := ParseHex(ethResp.Result)
 	if err != nil {
 		return 0, err
 	}
@@ -110,27 +118,29 @@ func (ep *EthTxParser) GetCurrentBlock() (uint64, error) {
 	return blockNumber, nil
 }
 
-func (ep *EthTxParser) Start() {
+func (ep *EthTxParser) Start(ctx context.Context) {
 	//go ep.pollCurrentBlock()
 	ticker := time.NewTicker(CurrentBlockPollingInterval)
 	defer ticker.Stop()
 
-	for _ = range ticker.C {
-		latestBlock, err := ep.GetCurrentBlock()
-		if err != nil {
-			fmt.Println("Error getting latest block:", err)
-			continue
-		}
-		if latestBlock > ep.LastBlock {
-			for i := latestBlock; i > ep.LastBlock; i-- {
-				ep.UpdateTransactionsFromBlock(i)
+	for {
+		select {
+		case <-ticker.C:
+			latestBlock, err := ep.GetCurrentBlock()
+			if err != nil {
+				fmt.Printf("Error getting latest block: %s", err)
+				continue
 			}
-			ep.LastBlock = latestBlock
+			if latestBlock > ep.LastBlock {
+				for i := latestBlock; i > ep.LastBlock; i-- {
+					ep.UpdateTransactionsFromBlock(i)
+				}
+				ep.LastBlock = latestBlock
+			}
+		case <-ctx.Done():
+			return
 		}
 	}
-}
-func (ep *EthTxParser) Stop() {
-	//ep.Store.Close()
 }
 
 func (ep *EthTxParser) UpdateTransactionsFromBlock(blockNum int64) error {
@@ -154,6 +164,7 @@ func (ep *EthTxParser) UpdateTransactionsFromBlock(blockNum int64) error {
 	if err != nil {
 		return err
 	}
+	//fmt.Println("BODY:", string(body))
 	var ethResp EthBlockByNumberResponse
 	err = json.Unmarshal(body, &ethResp)
 	if err != nil {
@@ -161,19 +172,29 @@ func (ep *EthTxParser) UpdateTransactionsFromBlock(blockNum int64) error {
 	}
 
 	transactions := ethResp.Result.Transactions
+	ep.mx.RLock()
+	defer ep.mx.RUnlock()
 	for _, tx := range transactions {
-		fmt.Println("Transaction:", tx)
-		//if ep.Addresses[from] || ep.Addresses[to] {
-		//	t := EthTransaction{
-		//ep.Store.AddTransaction(Transaction{
-		//	From:  from,
-		//	To:    to,
-		//	Value: value,
-		//})
-		//}
+		//fmt.Printf("Transaction: %+v\n", tx)
+		var address string
+		if ep.Addresses[tx.From] {
+			address = tx.From
+		} else if ep.Addresses[tx.To] {
+			address = tx.To
+		} else {
+			continue
+		}
+		ep.TxStore.AddTransaction(address, tx)
 	}
 
 	return nil
+}
+
+func (ep *EthTxParser) Subscribe(address string) bool {
+	ep.mx.Lock()
+	defer ep.mx.Unlock()
+	ep.Addresses[address] = true
+	return true
 }
 
 func ParseHex(hex string) (int64, error) {
