@@ -8,13 +8,13 @@ import (
 	"io"
 	"log/slog"
 	"net/http"
-	//"runtime"
+	"runtime"
 	"strconv"
 	"strings"
 	"sync"
 	"time"
 
-	//"github.com/pmes126/tx-parser-service/internal/conc"
+	"github.com/pmes126/tx-parser-service/internal/conc"
 	"github.com/pmes126/tx-parser-service/internal/store"
 )
 
@@ -136,20 +136,23 @@ func (ep *EthTxParser) Start(ctx context.Context) {
 	ticker := time.NewTicker(ep.blockPollingInterval)
 	defer ticker.Stop()
 
-	//job := func(ctx context.Context, blockNum int64) error {
-	//	transactions, err := ep.QueryTransactionsFromBlock(blockNum)
-	//	if err != nil {
-	//		ep.logger.Error("Error Querying Transactions for block", slog.Int64("block id", blockNum), slog.String("error", err.Error()))
-	//	}
-	//	if err = ep.UpdateTransactionsInStore(transactions); err != nil {
-	//		ep.logger.Error("Error Updating Transactions from block", slog.Int64("block id", blockNum), slog.String("error", err.Error()))
-	//	}
-	//	return nil
-	//}
+	// job to query transactions in a block then update the store with the tranasctions for the tracked addresses.
+	job := func(ctx context.Context, blockNum int64) error {
+		transactions, err := ep.QueryTransactionsFromBlock(blockNum)
+		if err != nil {
+			ep.logger.Error("Error Querying Transactions for block", slog.Int64("block id", blockNum), slog.String("error", err.Error()))
+			return err
+		}
+		if err = ep.UpdateTransactionsInStore(transactions); err != nil {
+			ep.logger.Error("Error Updating Transactions from block", slog.Int64("block id", blockNum), slog.String("error", err.Error()))
+			return err
+		}
+		return nil
+	}
 
-	//wp := conc.NewWorkerPool(runtime.NumCPU(), job, 10)
-	//defer wp.CloseInputChannel()
-	//resChan := wp.Start(ctx)
+	wp := conc.NewWorkerPool(runtime.NumCPU(), job, 10)
+	defer wp.CloseInputChannel()
+	resChan := wp.Start(ctx)
 
 	for {
 		select {
@@ -165,18 +168,16 @@ func (ep *EthTxParser) Start(ctx context.Context) {
 					ep.lastBlock = latestBlock - 1
 				}
 				for i := latestBlock; i > ep.lastBlock; i-- {
-					transactions, err := ep.QueryTransactionsFromBlock(i)
-					if err != nil {
-						ep.logger.Error("Error Querying Transactions for block", slog.Int64("block id", i), slog.String("error", err.Error()))
-					}
-					if err = ep.UpdateTransactionsInStore(transactions); err != nil {
-						ep.logger.Error("Error Updating Transactions from block", slog.Int64("block id", i), slog.String("error", err.Error()))
-					}
+					wp.PushTask(i)
 				}
 				ep.lastBlock = latestBlock
 			}
 		case <-ctx.Done():
 			return
+		case err := <-resChan:
+			if err != nil {
+				ep.logger.Error("Error processing block transactions", slog.String("error", err.Error()))
+			}
 		}
 	}
 }

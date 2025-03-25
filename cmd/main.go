@@ -51,16 +51,9 @@ func run(c context.Context, logger *slog.Logger, cfg *Config) error {
 	defer signal.Stop(shutdown)
 
 	ethTxParser := parser.NewEthTxParser(store.NewMemTxStore[parser.EthTransaction](), &http.Client{}, logger, cfg.PollInterval)
-	//block, _ := ethTxParser.GetCurrentBlock()
-	//fmt.Println("Current block:", block)
-	//fmt.Println(fmt.Sprintf("0x%x", 22113))
-	//t, _ := ethTxParser.QueryTransactionsFromBlock(block)
-
-	//fmt.Println("Transactions: ", len(t))
-	//fmt.Printf("Transactions: %+v", t)
 
 	go func() {
-		logger.Info("Starting tx-parser-service")
+		logger.Info("Starting tx-parser block polling")
 		ethTxParser.Start(ctx)
 	}()
 
@@ -89,7 +82,7 @@ func run(c context.Context, logger *slog.Logger, cfg *Config) error {
 		// Cancel existing context.
 		cancel()
 		// Shutdown the server gracefully.
-		sctx, cancel := context.WithTimeout(ctx, 5*time.Second)
+		sctx, cancel := context.WithTimeout(ctx, time.Second)
 		defer cancel()
 		if err := server.Shutdown(sctx); err != nil {
 			if err := server.Close(); err != nil {
