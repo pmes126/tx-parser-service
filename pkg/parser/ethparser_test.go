@@ -109,6 +109,12 @@ func TestEthTxParser_UpdateAndGetTransactions(t *testing.T) {
 					Hash:  "0x3",
 					Value: "0x123",
 				},
+				{
+					From:  Addresses[3],
+					To:    Addresses[1],
+					Hash:  "0x4",
+					Value: "0x123",
+				},
 			}},
 			wantErr: false,
 		},
@@ -124,7 +130,6 @@ func TestEthTxParser_UpdateAndGetTransactions(t *testing.T) {
 			}
 			for _, address := range Addresses {
 				tx, err := etp.GetTransactions(address)
-				//fmt.Printf("%+v", tx)
 				if (err != nil) != tt.wantErr {
 					fmt.Printf("Error for address %s", address)
 					t.Errorf("EthTxParser.UpdateTransactionsInStore() error = %v, wantErr %v", err, tt.wantErr)

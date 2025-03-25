@@ -37,7 +37,7 @@ func (mts *MemTxStore[T]) GetTransactions(address string) ([]T, error) {
 	defer mts.mx.Unlock()
 	if txs, ok := mts.Transactions[address]; ok {
 		res := make([]T, len(txs))
-		copy(res, txs)
+		copy(res, txs) // Deep copy.
 		return res, nil
 	}
 	return nil, ErrNoTransactions
