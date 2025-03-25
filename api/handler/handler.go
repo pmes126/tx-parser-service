@@ -4,6 +4,7 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"log/slog"
 	"net/http"
 	"time"
@@ -95,20 +96,25 @@ func (h *Handler) handleGetTransactions(w http.ResponseWriter, r *http.Request) 
 // @Failure 500 {string} string "Failed to subscribe to address"
 // @Router /v1/subscribe [post]
 func (h *Handler) handleSubscribeAddress(w http.ResponseWriter, r *http.Request) {
-	var address string
+	type Address struct {
+		Address string `json:"address"`
+	}
+	var address Address
 	if err := json.NewDecoder(r.Body).Decode(&address); err != nil {
+		fmt.Println("Failed to decode request body", r.Body)
 		http.Error(w, "Failed to decode request body", http.StatusBadRequest)
 		return
 	}
-	if address == "" {
+	addr := address.Address
+	if addr == "" {
 		http.Error(w, "Address parameter missing", http.StatusBadRequest)
 		return
 	}
-	if !isValidEthAddress(address) {
+	if !isValidEthAddress(addr) {
 		http.Error(w, "Invalid address", http.StatusBadRequest)
 		return
 	}
-	if h.txParser.Subscribe(address) {
+	if h.txParser.Subscribe(addr) {
 		w.WriteHeader(http.StatusOK)
 		return
 	} else {

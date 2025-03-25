@@ -1,6 +1,7 @@
 package handler
 
 import (
+	"bytes"
 	"encoding/json"
 	"fmt"
 	"log/slog"
@@ -190,6 +191,9 @@ func TestHandler_handleGetTransactionsBadInput(t *testing.T) {
 }
 
 func TestHandler_handleSubscribe(t *testing.T) {
+	type Address struct {
+		Address string `json:"address"`
+	}
 	type fields struct {
 		logger      *slog.Logger
 		httpTimeout int
@@ -198,9 +202,12 @@ func TestHandler_handleSubscribe(t *testing.T) {
 	type args struct {
 		w        http.ResponseWriter
 		r        *http.Request
-		address  string
+		address  Address
+		body     string
 		codeWant int
 	}
+	add := Address{"0xc0ffee254729296a45a3885639AC7E10F9d54979"}
+	reqBody, _ := json.Marshal(add)
 	tests := []struct {
 		name   string
 		fields fields
@@ -214,8 +221,8 @@ func TestHandler_handleSubscribe(t *testing.T) {
 			},
 			args: args{
 				w:        httptest.NewRecorder(),
-				r:        httptest.NewRequest(http.MethodGet, fmt.Sprintf("/v1/subscribe?address=%s", "0xc0ffee254729296a45a3885639AC7E10F9d54979"), nil),
-				address:  "0xc0ffee254729296a45a3885639AC7E10F9d54979",
+				r:        httptest.NewRequest(http.MethodGet, "/v1/subscribe", bytes.NewBuffer(reqBody)),
+				address:  add,
 				codeWant: http.StatusOK,
 			},
 		},
