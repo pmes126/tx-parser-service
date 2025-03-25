@@ -1,6 +1,7 @@
 ### 1. [Introduction](#introduction)
     This repository contains an implementation of a transaction parser service on the Ethereum blockchain. 
-    The service exposes a REST API that allows users to subscibe Ethereum addresses and then query the transactions for each address. The service periodically polls the Ethereum blockchain for new transactions for the subscibed addresses and stores the updates.
+    The service exposes a REST API that allows users to subscibe Ethereum addresses and then query the transactions for each address.
+    The service periodically polls the Ethereum blockchain for new transactions for the subscibed addresses and stores the updates.
 ### 2. [Installation](#installation)
     1. Clone the repository
     git clone https://github.com/pmes126/tx-parser-service.git
@@ -10,7 +11,7 @@
     make run
     ```
     4. The service will be running on http://localhost:8080
-    default port is 8080, it can be changed in the config file config.yaml
+    default port is 8080, it can be changed in the config file
     5. To run the tests
     ``` bash
     make test
