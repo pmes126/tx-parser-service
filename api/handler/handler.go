@@ -21,6 +21,7 @@ type Handler struct {
 	httpTimeout time.Duration
 }
 
+// NewHandler creates a new handler
 func NewHandler(logger *slog.Logger, txParser parser.Parser, httpTimeout time.Duration) *Handler {
 	return &Handler{
 		logger:      logger,
@@ -29,6 +30,7 @@ func NewHandler(logger *slog.Logger, txParser parser.Parser, httpTimeout time.Du
 	}
 }
 
+// Routes returns the router for the handler
 func Routes(h *Handler) *chi.Mux {
 	r := chi.NewRouter()
 	r.Use(middleware.Logger)
@@ -41,6 +43,18 @@ func Routes(h *Handler) *chi.Mux {
 	return r
 }
 
+// handleGetTransactions godoc
+// @Summary Get transactions for an address
+// @Description Get transactions for an address
+// @Produce json
+// @Param address query string true "Address to get transactions for"
+// @Success 200 {array} EthTransaction
+// @Failure 400 {string} string "Address parameter missing"
+// @Failure 400 {string} string "Invalid address"
+// @Failure 404 {string} string "Address not tracked"
+// @Failure 404 {string} string "Transactions not found"
+// @Failure 500 {string} string
+// @Router /v1/transactions [get]
 func (h *Handler) handleGetTransactions(w http.ResponseWriter, r *http.Request) {
 	address := r.URL.Query().Get("address")
 	if address == "" {
@@ -69,6 +83,16 @@ func (h *Handler) handleGetTransactions(w http.ResponseWriter, r *http.Request) 
 	w.WriteHeader(http.StatusOK)
 }
 
+// handleSubscribeAddress godoc
+// @Summary Subscribe to an address
+// @Description Subscribe to an address to receive notifications of transactions
+// @Tags subscribe
+// @Param address query string true "Address to subscribe to"
+// @Success 200 {string} string "OK"
+// @Failure 400 {string} string "Address parameter missing"
+// @Failure 400 {string} string "Invalid address"
+// @Failure 500 {string} string "Failed to subscribe to address"
+// @Router /v1/subscribe [post]
 func (h *Handler) handleSubscribeAddress(w http.ResponseWriter, r *http.Request) {
 	address := r.URL.Query().Get("address")
 	if address == "" {
