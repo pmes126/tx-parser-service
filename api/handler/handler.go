@@ -88,13 +88,18 @@ func (h *Handler) handleGetTransactions(w http.ResponseWriter, r *http.Request) 
 // @Description Subscribe to an address to receive notifications of transactions
 // @Tags subscribe
 // @Param address query string true "Address to subscribe to"
+// @Accept json
 // @Success 200 {string} string "OK"
 // @Failure 400 {string} string "Address parameter missing"
 // @Failure 400 {string} string "Invalid address"
 // @Failure 500 {string} string "Failed to subscribe to address"
 // @Router /v1/subscribe [post]
 func (h *Handler) handleSubscribeAddress(w http.ResponseWriter, r *http.Request) {
-	address := r.URL.Query().Get("address")
+	var address string
+	if err := json.NewDecoder(r.Body).Decode(&address); err != nil {
+		http.Error(w, "Failed to decode request body", http.StatusBadRequest)
+		return
+	}
 	if address == "" {
 		http.Error(w, "Address parameter missing", http.StatusBadRequest)
 		return
