@@ -224,7 +224,7 @@ func (ep *EthTxParser) UpdateTransactionsInStore(transactions []EthTransaction) 
 			ep.txStore.AddTransaction(from, tx)
 		}
 		if ep.addresses[to] {
-			ep.txStore.AddTransaction(from, tx)
+			ep.txStore.AddTransaction(to, tx)
 		}
 	}
 	return nil
@@ -244,6 +244,10 @@ func (ep *EthTxParser) Subscribe(address string) bool {
 func (ep *EthTxParser) GetTransactions(address string) ([]EthTransaction, error) {
 	addr := strings.ToLower(address)
 	ep.logger.Debug("Getting transactions for address", slog.String("address", addr))
+	if _, ok := ep.addresses[addr]; !ok {
+		ep.logger.Debug("Address not found", slog.String("address", addr))
+		return nil, ErrAddressNotTracked
+	}
 	txs, err := ep.txStore.GetTransactions(addr)
 	if err != nil {
 		return nil, err

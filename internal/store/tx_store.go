@@ -11,6 +11,6 @@ type TxStore[T any] interface {
 }
 
 var (
-	ErrAddressNotFound = errors.New("Address not tracked")
+	ErrAddressNotFound = errors.New("Address not found in store")
 	ErrNoTransactions  = errors.New("no transactions found for address")
 )

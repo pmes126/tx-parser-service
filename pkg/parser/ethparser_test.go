@@ -1,6 +1,7 @@
 package parser
 
 import (
+	"fmt"
 	"log/slog"
 	"net/http"
 	"os"
@@ -81,7 +82,7 @@ func TestEthTxParser_UpdateAndGetTransactions(t *testing.T) {
 		transactions []EthTransaction
 	}
 	logger := slog.New(slog.NewTextHandler(os.Stdout, nil))
-	Addresses := []string{"0x123", "0x456", "0x789"}
+	Addresses := []string{"0x1111111111111111111111111111111111111111", "0x2222222222222222222222222222222222222222", "0x3333333333333333333333333333333333333333", "0x4444444444444444444444444444444444444444"}
 	tests := []struct {
 		name    string
 		args    args
@@ -91,20 +92,20 @@ func TestEthTxParser_UpdateAndGetTransactions(t *testing.T) {
 			name: "Test UpdateTransactionsInStore",
 			args: args{transactions: []EthTransaction{
 				{
-					From:  "0x123",
-					To:    "0x456",
+					From:  Addresses[0],
+					To:    Addresses[1],
 					Hash:  "0x1",
 					Value: "0x123",
 				},
 				{
-					From:  "0x123",
-					To:    "0x456",
+					From:  Addresses[1],
+					To:    Addresses[2],
 					Hash:  "0x2",
 					Value: "0x123",
 				},
 				{
-					From:  "0x456",
-					To:    "0x789",
+					From:  Addresses[2],
+					To:    Addresses[3],
 					Hash:  "0x3",
 					Value: "0x123",
 				},
@@ -123,7 +124,9 @@ func TestEthTxParser_UpdateAndGetTransactions(t *testing.T) {
 			}
 			for _, address := range Addresses {
 				tx, err := etp.GetTransactions(address)
+				//fmt.Printf("%+v", tx)
 				if (err != nil) != tt.wantErr {
+					fmt.Printf("Error for address %s", address)
 					t.Errorf("EthTxParser.UpdateTransactionsInStore() error = %v, wantErr %v", err, tt.wantErr)
 				}
 				for _, tr := range tx {
@@ -135,4 +138,3 @@ func TestEthTxParser_UpdateAndGetTransactions(t *testing.T) {
 		})
 	}
 }
-

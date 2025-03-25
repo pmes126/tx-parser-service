@@ -1,5 +1,17 @@
 package parser
 
+import (
+	"errors"
+)
+
+const (
+	EthAddressLength = 42
+)
+
+var (
+	ErrAddressNotTracked = errors.New("Address not tracked")
+)
+
 type Parser interface {
 	// GetCurrentBlock last parsed block
 	GetCurrentBlock() (int64, error)
